@@ -823,6 +823,7 @@ class Account extends Eloquent
 
     public function hasFeature($feature)
     {
+    	return true;
         if (Utils::isNinjaDev()) {
             return true;
         }
