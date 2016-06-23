@@ -8,6 +8,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputArgument;
 use App\Ninja\Mailers\ContactMailer as Mailer;
 use App\Ninja\Repositories\InvoiceRepository;
+use App\Services\PaymentService;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Invitation;
@@ -18,13 +19,15 @@ class SendRecurringInvoices extends Command
     protected $description = 'Send recurring invoices';
     protected $mailer;
     protected $invoiceRepo;
+    protected $paymentService;
 
-    public function __construct(Mailer $mailer, InvoiceRepository $invoiceRepo)
+    public function __construct(Mailer $mailer, InvoiceRepository $invoiceRepo, PaymentService $paymentService)
     {
         parent::__construct();
 
         $this->mailer = $mailer;
         $this->invoiceRepo = $invoiceRepo;
+        $this->paymentService = $paymentService;
     }
 
     public function fire()
@@ -42,7 +45,7 @@ class SendRecurringInvoices extends Command
             if (!$recurInvoice->user->confirmed) {
                 continue;
             }
-            
+
             $recurInvoice->account->loadLocalizationSettings($recurInvoice->client);
             $this->info('Processing Invoice '.$recurInvoice->id.' - Should send '.($recurInvoice->shouldSendToday() ? 'YES' : 'NO'));
             $invoice = $this->invoiceRepo->createRecurringInvoice($recurInvoice);
@@ -50,6 +53,25 @@ class SendRecurringInvoices extends Command
             if ($invoice && !$invoice->isPaid()) {
                 $this->info('Sending Invoice');
                 $this->mailer->sendInvoice($invoice);
+            }
+        }
+
+        $delayedAutoBillInvoices = Invoice::with('account.timezone', 'recurring_invoice', 'invoice_items', 'client', 'user')
+            ->whereRaw('is_deleted IS FALSE AND deleted_at IS NULL AND is_recurring IS FALSE
+            AND balance > 0 AND due_date = ? AND recurring_invoice_id IS NOT NULL',
+                array($today->format('Y-m-d')))
+            ->orderBy('invoices.id', 'asc')
+            ->get();
+        $this->info(count($delayedAutoBillInvoices).' due recurring invoice instance(s) found');
+
+        foreach ($delayedAutoBillInvoices as $invoice) {
+            if ($invoice->isPaid()) {
+                continue;
+            }
+
+            if ($invoice->getAutoBillEnabled() && $invoice->client->autoBillLater()) {
+                $this->info('Processing Invoice '.$invoice->id.' - Should bill '.($billNow ? 'YES' : 'NO'));
+                $this->paymentService->autoBillInvoice($invoice);
             }
         }
 

@@ -230,7 +230,7 @@ class AccountController extends BaseController
             Session::flash('message', trans('texts.updated_plan'));
         }
 
-        if (!empty($new_plan)) {
+        if (!empty($new_plan) && $new_plan['plan'] != PLAN_FREE) {
             $invitation = $this->accountRepo->enablePlan($new_plan['plan'], $new_plan['term'], $credit, !empty($pending_monthly));
             return Redirect::to('view/'.$invitation->invitation_key);
         }
@@ -424,16 +424,16 @@ class AccountController extends BaseController
         if ($trashedCount == 0) {
             return Redirect::to('gateways/create');
         } else {
-            $switchToWepay = WEPAY_CLIENT_ID && !$account->getGatewayConfig(GATEWAY_WEPAY);
-
-            if ($switchToWepay && $account->token_billing_type_id != TOKEN_BILLING_DISABLED) {
-                $switchToWepay = !$account->getGatewayConfig(GATEWAY_BRAINTREE) && !$account->getGatewayConfig(GATEWAY_STRIPE);
+            $tokenBillingOptions = [];
+            for ($i=1; $i<=4; $i++) {
+                $tokenBillingOptions[$i] = trans("texts.token_billing_{$i}");
             }
 
             return View::make('accounts.payments', [
-                'showSwitchToWepay' => $switchToWepay,
-                'showAdd' => $count < count(Gateway::$paymentTypes),
-                'title' => trans('texts.online_payments')
+                'showAdd' => $count < count(Gateway::$alternate) + 1,
+                'title' => trans('texts.online_payments'),
+                'tokenBillingOptions' => $tokenBillingOptions,
+                'account' => $account,
             ]);
         }
     }
@@ -661,6 +661,8 @@ class AccountController extends BaseController
             return AccountController::saveDetails();
         } elseif ($section === ACCOUNT_LOCALIZATION) {
             return AccountController::saveLocalization();
+        } elseif ($section == ACCOUNT_PAYMENTS) {
+            return self::saveOnlinePayments();
         } elseif ($section === ACCOUNT_NOTIFICATIONS) {
             return AccountController::saveNotifications();
         } elseif ($section === ACCOUNT_EXPORT) {
@@ -966,7 +968,7 @@ class AccountController extends BaseController
             }
 
             $labels = [];
-            foreach (['item', 'description', 'unit_cost', 'quantity', 'line_total', 'terms', 'balance_due', 'partial_due'] as $field) {
+            foreach (['item', 'description', 'unit_cost', 'quantity', 'line_total', 'terms', 'balance_due', 'partial_due', 'subtotal', 'paid_to_date', 'discount'] as $field) {
                 $labels[$field] = Input::get("labels_{$field}");
             }
             $account->invoice_labels = json_encode($labels);
@@ -1131,6 +1133,20 @@ class AccountController extends BaseController
         Session::flash('message', trans('texts.updated_settings'));
 
         return Redirect::to('settings/'.ACCOUNT_LOCALIZATION);
+    }
+
+    private function saveOnlinePayments()
+    {
+        $account = Auth::user()->account;
+        $account->token_billing_type_id = Input::get('token_billing_type_id');
+        $account->auto_bill_on_due_date = boolval(Input::get('auto_bill_on_due_date'));
+        $account->save();
+
+        event(new UserSettingsChanged());
+
+        Session::flash('message', trans('texts.updated_settings'));
+
+        return Redirect::to('settings/'.ACCOUNT_PAYMENTS);
     }
 
     public function removeLogo()
@@ -1310,12 +1326,14 @@ class AccountController extends BaseController
         }
 
         $account = Auth::user()->account;
+        $invitation = $invoice->invitations->first();
 
         // replace the variables with sample data
         $data = [
             'account' => $account,
             'invoice' => $invoice,
-            'invitation' => $invoice->invitations->first(),
+            'invitation' => $invitation,
+            'link' => $invitation->getLink(),
             'client' => $invoice->client,
             'amount' => $invoice->amount
         ];

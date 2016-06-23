@@ -9,6 +9,7 @@ use Cache;
 use App;
 use File;
 use App\Models\Document;
+use App\Models\AccountGateway;
 use App\Events\UserSettingsChanged;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -198,6 +199,11 @@ class Account extends Eloquent
         return $this->belongsTo('App\Models\Company');
     }
 
+    public function expenseCategories()
+    {
+        return $this->hasMany('App\Models\ExpenseCategory','account_id','id')->withTrashed();
+    }
+
     public function setIndustryIdAttribute($value)
     {
         $this->attributes['industry_id'] = $value ?: null;
@@ -212,8 +218,6 @@ class Account extends Eloquent
     {
         $this->attributes['size_id'] = $value ?: null;
     }
-
-
 
     public function isGatewayConfigured($gatewayId = 0)
     {
@@ -384,30 +388,87 @@ class Account extends Eloquent
         return $format;
     }
 
-    public function getGatewayByType($type = PAYMENT_TYPE_ANY)
+    /*
+    public function defaultGatewayType()
     {
-        if ($type == PAYMENT_TYPE_STRIPE_ACH || $type == PAYMENT_TYPE_STRIPE_CREDIT_CARD) {
-            $type = PAYMENT_TYPE_STRIPE;
+        $accountGateway = $this->account_gateways[0];
+        $paymentDriver = $accountGateway->paymentDriver();
+
+        return $paymentDriver->gatewayTypes()[0];
+    }
+    */
+
+    public function getGatewayByType($type = false)
+    {
+        if ( ! $this->relationLoaded('account_gateways')) {
+            $this->load('account_gateways');
         }
 
-        if ($type == PAYMENT_TYPE_BRAINTREE_PAYPAL) {
-            $gateway = $this->getGatewayConfig(GATEWAY_BRAINTREE);
-
-            if (!$gateway || !$gateway->getPayPalEnabled()){
-                return false;
+        foreach ($this->account_gateways as $accountGateway) {
+            if ( ! $type) {
+                return $accountGateway;
             }
-            return $gateway;
-        }
 
-        foreach ($this->account_gateways as $gateway) {
-            if (!$type || $type == PAYMENT_TYPE_ANY) {
-                return $gateway;
-            } elseif ($gateway->isPaymentType($type)) {
-                return $gateway;
+            $paymentDriver = $accountGateway->paymentDriver();
+
+            if ($paymentDriver->handles($type)) {
+                return $accountGateway;
             }
         }
 
         return false;
+    }
+
+    public function availableGatewaysIds()
+    {
+        if ( ! $this->relationLoaded('account_gateways')) {
+            $this->load('account_gateways');
+        }
+
+        $gatewayTypes = [];
+        $gatewayIds = [];
+
+        foreach ($this->account_gateways as $accountGateway) {
+            $paymentDriver = $accountGateway->paymentDriver();
+            $gatewayTypes = array_unique(array_merge($gatewayTypes, $paymentDriver->gatewayTypes()));
+        }
+
+        foreach (Cache::get('gateways') as $gateway) {
+            $paymentDriverClass = AccountGateway::paymentDriverClass($gateway->provider);
+            $paymentDriver = new $paymentDriverClass();
+            $available = true;
+
+            foreach ($gatewayTypes as $type) {
+                if ($paymentDriver->handles($type)) {
+                    $available = false;
+                    break;
+                }
+            }
+            if ($available) {
+                $gatewayIds[] = $gateway->id;
+            }
+        }
+
+        return $gatewayIds;
+    }
+
+    public function paymentDriver($invitation = false, $gatewayType = false)
+    {
+        if ($accountGateway = $this->getGatewayByType($gatewayType)) {
+            return $accountGateway->paymentDriver($invitation, $gatewayType);
+        }
+
+        return false;
+    }
+
+    public function gatewayIds()
+    {
+        return $this->account_gateways()->pluck('gateway_id')->toArray();
+    }
+
+    public function hasGatewayId($gatewayId)
+    {
+        return in_array($gatewayId, $this->gatewayIds());
     }
 
     public function getGatewayConfig($gatewayId)
@@ -545,7 +606,7 @@ class Account extends Eloquent
 
             if ($this->hasClientNumberPattern($invoice) && !$clientId) {
                 // do nothing, we don't yet know the value
-            } else {
+            } elseif ( ! $invoice->invoice_number) {
                 $invoice->invoice_number = $this->getNextInvoiceNumber($invoice);
             }
         }
@@ -649,33 +710,40 @@ class Account extends Eloquent
         return $this->getNextInvoiceNumber($invoice);
     }
 
-    public function getNextInvoiceNumber($invoice)
+    public function getNextInvoiceNumber($invoice, $validateUnique = true)
     {
         if ($this->hasNumberPattern($invoice->invoice_type_id)) {
-            return $this->getNumberPattern($invoice);
+            $number = $this->getNumberPattern($invoice);
+        } else {
+            $counter = $this->getCounter($invoice->invoice_type_id);
+            $prefix = $this->getNumberPrefix($invoice->invoice_type_id);
+            $counterOffset = 0;
+            $check = false;
+
+            // confirm the invoice number isn't already taken
+            do {
+                $number = $prefix . str_pad($counter, $this->invoice_number_padding, '0', STR_PAD_LEFT);
+                if ($validateUnique) {
+                    $check = Invoice::scope(false, $this->id)->whereInvoiceNumber($number)->withTrashed()->first();
+                    $counter++;
+                    $counterOffset++;
+                }
+            } while ($check);
+
+            // update the invoice counter to be caught up
+            if ($counterOffset > 1) {
+                if ($invoice->isType(INVOICE_TYPE_QUOTE) && !$this->share_counter) {
+                    $this->quote_number_counter += $counterOffset - 1;
+                } else {
+                    $this->invoice_number_counter += $counterOffset - 1;
+                }
+
+                $this->save();
+            }
         }
 
-        $counter = $this->getCounter($invoice->invoice_type_id);
-        $prefix = $this->getNumberPrefix($invoice->invoice_type_id);
-        $counterOffset = 0;
-
-        // confirm the invoice number isn't already taken
-        do {
-            $number = $prefix . str_pad($counter, $this->invoice_number_padding, '0', STR_PAD_LEFT);
-            $check = Invoice::scope(false, $this->id)->whereInvoiceNumber($number)->withTrashed()->first();
-            $counter++;
-            $counterOffset++;
-        } while ($check);
-
-        // update the invoice counter to be caught up
-        if ($counterOffset > 1) {
-            if ($invoice->isType(INVOICE_TYPE_QUOTE) && !$this->share_counter) {
-                $this->quote_number_counter += $counterOffset - 1;
-            } else {
-                $this->invoice_number_counter += $counterOffset - 1;
-            }
-
-            $this->save();
+        if ($invoice->recurring_invoice_id) {
+            $number = $this->recurring_invoice_number_prefix . $number;
         }
 
         return $number;
@@ -683,17 +751,15 @@ class Account extends Eloquent
 
     public function incrementCounter($invoice)
     {
+        // if they didn't use the counter don't increment it
+        if ($invoice->invoice_number != $this->getNextInvoiceNumber($invoice, false)) {
+            return;
+        }
+
         if ($invoice->isType(INVOICE_TYPE_QUOTE) && !$this->share_counter) {
             $this->quote_number_counter += 1;
         } else {
-            $default = $this->invoice_number_counter;
-            $actual = Utils::parseInt($invoice->invoice_number);
-
-            if ( ! $this->hasFeature(FEATURE_INVOICE_SETTINGS) && $default != $actual) {
-                $this->invoice_number_counter = $actual + 1;
-            } else {
-                $this->invoice_number_counter += 1;
-            }
+            $this->invoice_number_counter += 1;
         }
 
         $this->save();
@@ -709,6 +775,7 @@ class Account extends Eloquent
             'tax_rates' => [],
             'expenses' => ['client', 'invoice', 'vendor'],
             'payments' => ['invoice'],
+            'expenseCategories' => [],
         ];
 
         foreach ($map as $key => $values) {
@@ -1418,39 +1485,16 @@ class Account extends Eloquent
     public function getFontFolders(){
         return array_map(function($item){return $item['folder'];}, $this->getFontsData());
     }
-
-    public function canAddGateway($type){
-        if($this->getGatewayByType($type)) {
-            return false;
-        }
-        if ($type == PAYMENT_TYPE_CREDIT_CARD && $this->getGatewayByType(PAYMENT_TYPE_STRIPE)) {
-            // Stripe is already handling credit card payments
-            return false;
-        }
-
-        if ($type == PAYMENT_TYPE_STRIPE && $this->getGatewayByType(PAYMENT_TYPE_CREDIT_CARD)) {
-            // Another gateway is already handling credit card payments
-            return false;
-        }
-
-        if ($type == PAYMENT_TYPE_DIRECT_DEBIT && $stripeGateway = $this->getGatewayByType(PAYMENT_TYPE_STRIPE)) {
-            if (!empty($stripeGateway->getAchEnabled())) {
-                // Stripe is already handling ACH payments
-                return false;
-            }
-        }
-
-        if ($type == PAYMENT_TYPE_PAYPAL && $braintreeGateway = $this->getGatewayConfig(GATEWAY_BRAINTREE)) {
-            if (!empty($braintreeGateway->getPayPalEnabled())) {
-                // PayPal is already enabled
-                return false;
-            }
-        }
-
-        return true;
-    }
 }
 
-Account::updated(function ($account) {
+Account::updated(function ($account)
+{
+    // prevent firing event if the invoice/quote counter was changed
+    // TODO: remove once counters are moved to separate table
+    $dirty = $account->getDirty();
+    if (isset($dirty['invoice_number_counter']) || isset($dirty['quote_number_counter'])) {
+        return;
+    }
+
     Event::fire(new UserSettingsChanged());
 });

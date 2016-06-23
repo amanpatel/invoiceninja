@@ -59,15 +59,22 @@ class PaymentDatatable extends EntityDatatable
                     $card_type = trans("texts.card_" . $code);
                     if ($model->payment_type_id != PAYMENT_TYPE_ACH) {
                         if($model->last4) {
-                            $expiration = trans('texts.card_expiration', array('expires' => Utils::fromSqlDate($model->expiration, false)->format('m/y')));
+                            $expiration = Utils::fromSqlDate($model->expiration, false)->format('m/y');
                             return '<img height="22" src="' . URL::to('/images/credit_cards/' . $code . '.png') . '" alt="' . htmlentities($card_type) . '">&nbsp; &bull;&bull;&bull;' . $model->last4 . ' ' . $expiration;
                         } elseif ($model->email) {
                             return $model->email;
                         }
                     } elseif ($model->last4) {
-                        $bankData = PaymentMethod::lookupBankData($model->routing_number);
-                        if (is_object($bankData)) {
-                            return $bankData->name.'&nbsp; &bull;&bull;&bull;' . $model->last4;
+                        if($model->bank_name) {
+                            $bankName = $model->bank_name;
+                        } else {
+                            $bankData = PaymentMethod::lookupBankData($model->routing_number);
+                            if($bankData) {
+                                $bankName = $bankData->name;
+                            }
+                        }
+                        if (!empty($bankName)) {
+                            return $bankName.'&nbsp; &bull;&bull;&bull;' . $model->last4;
                         } elseif($model->last4) {
                             return '<img height="22" src="' . URL::to('/images/credit_cards/ach.png') . '" alt="' . htmlentities($card_type) . '">&nbsp; &bull;&bull;&bull;' . $model->last4;
                         }

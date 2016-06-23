@@ -494,13 +494,15 @@ class InvoiceRepository extends BaseRepository
             }
         }
 
-        foreach ($invoice->documents as $document){
-            if(!in_array($document->public_id, $document_ids)){
-                // Removed
-                // Not checking permissions; deleting a document is just editing the invoice
-                if($document->invoice_id == $invoice->id){
-                    // Make sure the document isn't on a clone
-                    $document->delete();
+        if ( ! $invoice->wasRecentlyCreated) {
+            foreach ($invoice->documents as $document){
+                if(!in_array($document->public_id, $document_ids)){
+                    // Removed
+                    // Not checking permissions; deleting a document is just editing the invoice
+                    if($document->invoice_id == $invoice->id){
+                        // Make sure the document isn't on a clone
+                        $document->delete();
+                    }
                 }
             }
         }
@@ -739,9 +741,10 @@ class InvoiceRepository extends BaseRepository
         }
 
         $invoice = Invoice::createNew($recurInvoice);
+        $invoice->invoice_type_id = INVOICE_TYPE_STANDARD;
         $invoice->client_id = $recurInvoice->client_id;
         $invoice->recurring_invoice_id = $recurInvoice->id;
-        $invoice->invoice_number = $recurInvoice->account->recurring_invoice_number_prefix . $recurInvoice->account->getNextInvoiceNumber($recurInvoice);
+        $invoice->invoice_number = $recurInvoice->account->getNextInvoiceNumber($invoice);
         $invoice->amount = $recurInvoice->amount;
         $invoice->balance = $recurInvoice->amount;
         $invoice->invoice_date = date_create()->format('Y-m-d');
@@ -796,7 +799,8 @@ class InvoiceRepository extends BaseRepository
         $recurInvoice->last_sent_date = date('Y-m-d');
         $recurInvoice->save();
 
-        if ($recurInvoice->auto_bill == AUTO_BILL_ALWAYS || ($recurInvoice->auto_bill != AUTO_BILL_OFF && $recurInvoice->client_enable_auto_bill)) {
+        if ($recurInvoice->getAutoBillEnabled() && !$recurInvoice->account->auto_bill_on_due_date) {
+            // autoBillInvoice will check for ACH, so we're not checking here
             if ($this->paymentService->autoBillInvoice($invoice)) {
                 // update the invoice reference to match its actual state
                 // this is to ensure a 'payment received' email is sent

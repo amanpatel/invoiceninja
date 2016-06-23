@@ -22,14 +22,13 @@ class OnlinePaymentCest
         $productKey = $this->faker->text(10);
 
         // set gateway info
-        $I->wantTo('create a gateway');
-        $I->amOnPage('/settings/online_payments');
+        if ( ! $I->grabFromDatabase('account_gateways', 'id', ['id' => 1])) {
+            $I->wantTo('create a gateway');
+            $I->amOnPage('/gateways/create?other_providers=true');
 
-        if (strpos($I->grabFromCurrentUrl(), 'create') !== false) {
             $I->fillField(['name' =>'23_apiKey'], env('stripe_secret_key') ?: Fixtures::get('stripe_secret_key'));
             // Fails to load StripeJS causing "ReferenceError: Can't find variable: Stripe"
             //$I->fillField(['name' =>'stripe_publishable_key'], env('stripe_secret_key') ?: Fixtures::get('stripe_publishable_key'));
-            $I->selectOption('#token_billing_type_id', 4);
             $I->click('Save');
             $I->see('Successfully created gateway');
         }
@@ -66,6 +65,7 @@ class OnlinePaymentCest
         $clientSession->does(function(AcceptanceTester $I) use ($invitationKey) {
             $I->amOnPage('/view/' . $invitationKey);
             $I->click('Pay Now');
+            $I->click('Credit Card');
 
             /*
             $I->fillField(['name' => 'first_name'], $this->faker->firstName);

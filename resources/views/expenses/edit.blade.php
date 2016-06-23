@@ -108,7 +108,7 @@
 
                 </div>
             </div>
-            @if ($account->isPro())
+            @if ($account->hasFeature(FEATURE_DOCUMENTS))
             <div clas="row">
                 <div class="col-md-2 col-sm-4"><div class="control-label" style="margin-bottom:10px;">{{trans('texts.expense_documents')}}</div></div>
                 <div class="col-md-12 col-sm-8">
@@ -371,7 +371,7 @@
         }
 
         window.countUploadingDocuments = 0;
-        @if (Auth::user()->account->hasFeature(FEATURE_DOCUMENTS))
+
         function handleDocumentAdded(file){
             // open document when clicked
             if (file.url) {
@@ -397,9 +397,9 @@
         }
 
         function handleDocumentUploaded(file, response){
+            window.countUploadingDocuments--;
             file.public_id = response.document.public_id
             model.documents()[file.index].update(response.document);
-            window.countUploadingDocuments--;
             if(response.document.preview_url){
                 dropzone.emit('thumbnail', file, response.document.preview_url);
             }
@@ -412,7 +412,7 @@
         function handleDocumentError() {
             window.countUploadingDocuments--;
         }
-        @endif
+
     </script>
 
 @stop

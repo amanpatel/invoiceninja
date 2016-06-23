@@ -3,10 +3,14 @@
 use Crypt;
 use App\Models\Gateway;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Laracasts\Presenter\PresentableTrait;
 
 class AccountGateway extends EntityModel
 {
     use SoftDeletes;
+    use PresentableTrait;
+
+    protected $presenter = 'App\Ninja\Presenters\AccountGatewayPresenter';
     protected $dates = ['deleted_at'];
 
     public function getEntityType()
@@ -33,14 +37,24 @@ class AccountGateway extends EntityModel
         return $arrayOfImages;
     }
 
-    public function getPaymentType()
+    public static function paymentDriverClass($provider)
     {
-        return Gateway::getPaymentType($this->gateway_id);
+        $folder = "App\\Ninja\\PaymentDrivers\\";
+        $class = $folder . $provider . 'PaymentDriver';
+        $class = str_replace('_', '', $class);
+
+        if (class_exists($class)) {
+            return $class;
+        } else {
+            return $folder . "BasePaymentDriver";
+        }
     }
-    
-    public function isPaymentType($type)
+
+    public function paymentDriver($invitation = false, $gatewayType = false)
     {
-        return $this->getPaymentType() == $type;
+        $class = static::paymentDriverClass($this->gateway->provider);
+
+        return new $class($this, $invitation, $gatewayType);
     }
 
     public function isGateway($gatewayId)
@@ -128,7 +142,7 @@ class AccountGateway extends EntityModel
     public function getWebhookUrl()
     {
         $account = $this->account ? $this->account : Account::find($this->account_id);
-        return \URL::to(env('WEBHOOK_PREFIX','').'paymenthook/'.$account->account_key.'/'.$this->gateway_id.env('WEBHOOK_SUFFIX',''));
+
+        return \URL::to(env('WEBHOOK_PREFIX','').'payment_hook/'.$account->account_key.'/'.$this->gateway_id.env('WEBHOOK_SUFFIX',''));
     }
 }
-

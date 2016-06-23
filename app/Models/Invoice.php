@@ -234,6 +234,12 @@ class Invoice extends EntityModel implements BalanceAffecting
                      ->where('is_recurring', '=', false);
     }
 
+    public function scopeQuotes($query)
+    {
+        return $query->where('invoice_type_id', '=', INVOICE_TYPE_QUOTE)
+                     ->where('is_recurring', '=', false);
+    }
+
     public function scopeInvoiceType($query, $typeId)
     {
         return $query->where('invoice_type_id', '=', $typeId);
@@ -884,13 +890,13 @@ class Invoice extends EntityModel implements BalanceAffecting
 
         if ($this->tax_name1) {
             $invoiceTaxAmount = round($taxable * ($this->tax_rate1 / 100), 2);
-            $invoicePaidAmount = $this->amount && $invoiceTaxAmount ? ($paidAmount / $this->amount * $invoiceTaxAmount) : 0;
+            $invoicePaidAmount = floatVal($this->amount) && $invoiceTaxAmount ? ($paidAmount / $this->amount * $invoiceTaxAmount) : 0;
             $this->calculateTax($taxes, $this->tax_name1, $this->tax_rate1, $invoiceTaxAmount, $invoicePaidAmount);
         }
 
         if ($this->tax_name2) {
             $invoiceTaxAmount = round($taxable * ($this->tax_rate2 / 100), 2);
-            $invoicePaidAmount = $this->amount && $invoiceTaxAmount ? ($paidAmount / $this->amount * $invoiceTaxAmount) : 0;
+            $invoicePaidAmount = floatVal($this->amount) && $invoiceTaxAmount ? ($paidAmount / $this->amount * $invoiceTaxAmount) : 0;
             $this->calculateTax($taxes, $this->tax_name2, $this->tax_rate2, $invoiceTaxAmount, $invoicePaidAmount);
         }
 
@@ -899,13 +905,13 @@ class Invoice extends EntityModel implements BalanceAffecting
 
             if ($invoiceItem->tax_name1) {
                 $itemTaxAmount = round($taxable * ($invoiceItem->tax_rate1 / 100), 2);
-                $itemPaidAmount = $this->amount && $itemTaxAmount ? ($paidAmount / $this->amount * $itemTaxAmount) : 0;
+                $itemPaidAmount = floatVal($this->amount) && $itemTaxAmount ? ($paidAmount / $this->amount * $itemTaxAmount) : 0;
                 $this->calculateTax($taxes, $invoiceItem->tax_name1, $invoiceItem->tax_rate1, $itemTaxAmount, $itemPaidAmount);
             }
 
             if ($invoiceItem->tax_name2) {
                 $itemTaxAmount = round($taxable * ($invoiceItem->tax_rate2 / 100), 2);
-                $itemPaidAmount = $this->amount && $itemTaxAmount ? ($paidAmount / $this->amount * $itemTaxAmount) : 0;
+                $itemPaidAmount = floatVal($this->amount) && $itemTaxAmount ? ($paidAmount / $this->amount * $itemTaxAmount) : 0;
                 $this->calculateTax($taxes, $invoiceItem->tax_name2, $invoiceItem->tax_rate2, $itemTaxAmount, $itemPaidAmount);
             }
         }
@@ -946,6 +952,20 @@ class Invoice extends EntityModel implements BalanceAffecting
             if(count($expense->documents))return true;
         }
         return false;
+    }
+
+    public function getAutoBillEnabled() {
+        if (!$this->is_recurring) {
+            $recurInvoice = $this->recurring_invoice;
+        } else {
+            $recurInvoice = $this;
+        }
+
+        if (!$recurInvoice) {
+            return false;
+        }
+
+        return $recurInvoice->auto_bill == AUTO_BILL_ALWAYS || ($recurInvoice->auto_bill != AUTO_BILL_OFF && $recurInvoice->client_enable_auto_bill);
     }
 }
 
