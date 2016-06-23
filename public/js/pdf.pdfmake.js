@@ -151,7 +151,7 @@ NINJA.decodeJavascript = function(invoice, javascript)
         'taxWidth': NINJA.taxWidth(invoice),
         'clientDetails': NINJA.clientDetails(invoice),
         'notesAndTerms': NINJA.notesAndTerms(invoice),
-        'subtotals': NINJA.subtotals(invoice),
+        'subtotals': NINJA.subtotals(invoice, invoice.is_quote),
         'subtotalsHeight': (NINJA.subtotals(invoice).length * 16) + 16,
         'subtotalsWithoutBalance': NINJA.subtotals(invoice, true),        
         'subtotalsBalance': NINJA.subtotalsBalance(invoice),
@@ -467,6 +467,11 @@ NINJA.subtotals = function(invoice, hideBalance)
     var account = invoice.account;
     var data = [];
     data.push([{text: invoiceLabels.subtotal}, {text: formatMoneyInvoice(invoice.subtotal_amount, invoice)}]);
+   	var i = data.length -1;
+    if (invoice.is_quote) {
+    	data[i][0]['text'] = '';
+    	data[i][1]['text'] = '';
+    }
 
     if (invoice.discount_amount != 0) {
         data.push([{text: invoiceLabels.discount}, {text: formatMoneyInvoice(invoice.discount_amount, invoice)}]);
@@ -506,6 +511,12 @@ NINJA.subtotals = function(invoice, hideBalance)
     var paid = invoice.amount - invoice.balance;
     if (invoice.account.hide_paid_to_date != '1' || paid) {
         data.push([{text:invoiceLabels.paid_to_date}, {text:formatMoneyInvoice(paid, invoice)}]);        
+	    if (invoice.is_quote) {
+	    	i = data.length -1;
+	    	console.log(i);
+	    	data[i][0]['text'] = ' ';
+	    	data[i][1]['text'] = ' ';
+	    }
     }
 
     var isPartial = NINJA.parseFloat(invoice.partial);
@@ -606,6 +617,7 @@ NINJA.invoiceDetails = function(invoice) {
         ])
     }
 
+    if (!invoice.is_quote)
     data.push([
         {text: invoiceLabels.balance_due, style: ['invoiceDetailBalanceDueLabel']},
         {text: formatMoneyInvoice(invoice.total_amount, invoice), style: ['invoiceDetailBalanceDue']}
