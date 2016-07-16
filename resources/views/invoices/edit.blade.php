@@ -8,7 +8,7 @@
     @foreach ($account->getFontFolders() as $font)
         <script src="{{ asset('js/vfs_fonts/'.$font.'.js') }}" type="text/javascript"></script>
     @endforeach
-	<script src="{{ asset('pdf.built.js') }}" type="text/javascript"></script>
+	<script src="{{ asset('pdf.built.js') }}?no_cache={{ NINJA_VERSION }}" type="text/javascript"></script>
     <script src="{{ asset('js/lightbox.min.js') }}" type="text/javascript"></script>
     <link href="{{ asset('css/lightbox.css') }}" rel="stylesheet" type="text/css"/>
 
@@ -256,7 +256,7 @@
 				</td>
 				<td>
                     <div id="scrollable-dropdown-menu">
-                        <input id="product_key" type="text" data-bind="typeahead: product_key, items: $root.products, key: 'product_key', valueUpdate: 'afterkeydown', attr: {name: 'invoice_items[' + $index() + '][product_key]'}" class="form-control invoice-item handled"/>
+                        <input id="product_key" type="text" data-bind="productTypeahead: product_key, items: $root.products, key: 'product_key', valueUpdate: 'afterkeydown', attr: {name: 'invoice_items[' + $index() + '][product_key]'}" class="form-control invoice-item handled"/>
                     </div>
 				</td>
 				<td>
@@ -327,7 +327,12 @@
                         <li role="presentation"><a href="#terms" aria-controls="terms" role="tab" data-toggle="tab">{{ trans("texts.terms") }}</a></li>
                         <li role="presentation"><a href="#footer" aria-controls="footer" role="tab" data-toggle="tab">{{ trans("texts.footer") }}</a></li>
                         @if ($account->hasFeature(FEATURE_DOCUMENTS))
-                            <li role="presentation"><a href="#attached-documents" aria-controls="attached-documents" role="tab" data-toggle="tab">{{ trans("texts.invoice_documents") }}</a></li>
+                            <li role="presentation"><a href="#attached-documents" aria-controls="attached-documents" role="tab" data-toggle="tab">
+                                {{ trans("texts.invoice_documents") }}
+                                @if (count($invoice->documents))
+                                    ({{ count($invoice->documents) }})
+                                @endif
+                            </a></li>
                         @endif
                     </ul>
 
@@ -524,8 +529,10 @@
 			{!! Former::select('invoice_design_id')->style('display:inline;width:150px;background-color:white !important')->raw()->fromQuery($invoiceDesigns, 'name', 'id')->data_bind("value: invoice_design_id") !!}
 		@endif
 
-        @if ( ! $invoice->is_recurring)
-		    {!! Button::primary(trans('texts.download_pdf'))->withAttributes(array('onclick' => 'onDownloadClick()'))->appendIcon(Icon::create('download-alt')) !!}
+        @if ( $invoice->exists && $invoice->id && ! $invoice->is_recurring)
+		    {!! Button::primary(trans('texts.download_pdf'))
+                    ->withAttributes(['onclick' => 'onDownloadClick()', 'id' => 'downloadPdfButton'])
+                    ->appendIcon(Icon::create('download-alt')) !!}
         @endif
 
         @if ($invoice->isClientTrashed())
@@ -549,7 +556,7 @@
 
 	@if (!Auth::user()->account->isPro())
 		<div style="font-size:larger">
-			{!! trans('texts.pro_plan_remove_logo', ['link'=>'<a href="#" onclick="showProPlan(\'remove_logo\')">'.trans('texts.pro_plan_remove_logo_link').'</a>']) !!}
+			{!! trans('texts.pro_plan_remove_logo', ['link'=>link_to('/settings/account_management?upgrade=true', trans('texts.pro_plan_remove_logo_link'))]) !!}
 		</div>
 	@endif
 
@@ -823,7 +830,7 @@
                 model.invoice().custom_taxes2({{ $account->custom_invoice_taxes2 ? 'true' : 'false' }});
                 // set the default account tax rate
                 @if ($account->invoice_taxes && ! empty($defaultTax))
-                    var defaultTax = {!! $defaultTax !!};
+                    var defaultTax = {!! $defaultTax->toJson() !!};
                     model.invoice().tax_rate1(defaultTax.rate);
                     model.invoice().tax_name1(defaultTax.name);
                 @endif
@@ -855,10 +862,15 @@
                 for (var i=0; i<expenses.length; i++) {
                     var expense = expenses[i];
                     var item = model.invoice().addItem();
+                    item.product_key(expense.expense_category ? expense.expense_category.name() : '');
                     item.notes(expense.public_notes());
                     item.qty(1);
                     item.expense_public_id(expense.public_id());
 					item.cost(expense.converted_amount());
+                    item.tax_rate1(expense.tax_rate1());
+                    item.tax_name1(expense.tax_name1());
+                    item.tax_rate2(expense.tax_rate2());
+                    item.tax_name2(expense.tax_name2());
                 }
                 model.invoice().invoice_items.push(blank);
                 model.invoice().has_expenses(true);
@@ -923,6 +935,7 @@
 		}
 
 		$('#invoice_footer, #terms, #public_notes, #invoice_number, #invoice_date, #due_date, #start_date, #po_number, #discount, #currency_id, #invoice_design_id, #recurring, #is_amount_discount, #partial, #custom_text_value1, #custom_text_value2').change(function() {
+            $('#downloadPdfButton').attr('disabled', true);
 			setTimeout(function() {
 				refreshPDF(true);
 			}, 1);
@@ -1078,6 +1091,7 @@
             if ($(event.target).hasClass('handled')) {
                 return;
             }
+            $('#downloadPdfButton').attr('disabled', true);
             onItemChange();
             refreshPDF(true);
 		});
@@ -1217,9 +1231,13 @@
 	}
 
 	function onSaveClick() {
+        @if(!empty($autoBillChangeWarning))
+        if(!confirm("{!! trans('texts.warn_change_auto_bill') !!}"))return;
+        @endif
+
 		if (model.invoice().is_recurring()) {
             // warn invoice will be emailed when saving new recurring invoice
-            if ({{ $invoice->exists() ? 'false' : 'true' }}) {
+            if ({{ $invoice->exists ? 'false' : 'true' }}) {
                 if (confirm("{!! trans("texts.confirm_recurring_email_$entityType") !!}" + '\n\n' + getSendToEmails() + '\n' + "{!! trans("texts.confirm_recurring_timing") !!}")) {
                     submitAction('');
                 }
@@ -1346,6 +1364,10 @@
 
     @if ($invoice->id)
     	function onPaymentClick() {
+            @if(!empty($autoBillChangeWarning))
+            if(!confirm("{!! trans('texts.warn_change_auto_bill') !!}"))return;
+            @endif
+
     		window.location = '{{ URL::to('payments/create/' . $invoice->client->public_id . '/' . $invoice->public_id ) }}';
     	}
 
@@ -1446,7 +1468,7 @@
     }
 
     window.countUploadingDocuments = 0;
-    @if ($account->hasFeature(FEATURE_DOCUMENTS))
+
     function handleDocumentAdded(file){
         // open document when clicked
         if (file.url) {
@@ -1473,10 +1495,12 @@
     }
 
     function handleDocumentUploaded(file, response){
+        window.countUploadingDocuments--;
         file.public_id = response.document.public_id
         model.invoice().documents()[file.index].update(response.document);
-        window.countUploadingDocuments--;
-        refreshPDF(true);
+        @if ($account->invoice_embed_documents)
+            refreshPDF(true);
+        @endif
         if(response.document.preview_url){
             dropzone.emit('thumbnail', file, response.document.preview_url);
         }
@@ -1489,7 +1513,6 @@
     function handleDocumentError() {
         window.countUploadingDocuments--;
     }
-    @endif
 
 	</script>
     @if ($account->hasFeature(FEATURE_DOCUMENTS) && $account->invoice_embed_documents)

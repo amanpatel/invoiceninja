@@ -4,7 +4,6 @@ use Auth;
 use Request;
 use Session;
 use Utils;
-use DB;
 use URL;
 use stdClass;
 use Validator;
@@ -177,6 +176,7 @@ class AccountRepository
             ENTITY_QUOTE,
             ENTITY_TASK,
             ENTITY_EXPENSE,
+            ENTITY_EXPENSE_CATEGORY,
             ENTITY_VENDOR,
             ENTITY_RECURRING_INVOICE,
             ENTITY_PAYMENT,
@@ -186,11 +186,11 @@ class AccountRepository
         foreach ($entityTypes as $entityType) {
             $features[] = [
                 "new_{$entityType}",
-                "/{$entityType}s/create",
+                Utils::pluralizeEntityType($entityType) . '/create'
             ];
             $features[] = [
-                "list_{$entityType}s",
-                "/{$entityType}s",
+                'list_' . Utils::pluralizeEntityType($entityType),
+                Utils::pluralizeEntityType($entityType)
             ];
         }
 
@@ -228,22 +228,25 @@ class AccountRepository
         return $data;
     }
 
-    public function enablePlan($plan = PLAN_PRO, $term = PLAN_TERM_MONTHLY, $credit = 0, $pending_monthly = false)
+    public function enablePlan($plan, $credit = 0, $pending_monthly = false)
     {
         $account = Auth::user()->account;
         $client = $this->getNinjaClient($account);
-        $invitation = $this->createNinjaInvoice($client, $account, $plan, $term, $credit, $pending_monthly);
+        $invitation = $this->createNinjaInvoice($client, $account, $plan, $credit, $pending_monthly);
 
         return $invitation;
     }
 
-    public function createNinjaInvoice($client, $clientAccount, $plan = PLAN_PRO, $term = PLAN_TERM_MONTHLY, $credit = 0, $pending_monthly = false)
+    public function createNinjaInvoice($client, $clientAccount, $plan, $credit = 0, $pending_monthly = false)
     {
+        $term = $plan['term'];
+        $plan_cost = $plan['price'];
+        $num_users = $plan['num_users'];
+        $plan = $plan['plan'];
+
         if ($credit < 0) {
             $credit = 0;
         }
-
-        $plan_cost = Account::$plan_prices[$plan][$term];
 
         $account = $this->getNinjaAccount();
         $lastInvoice = Invoice::withTrashed()->whereAccountId($account->id)->orderBy('public_id', 'DESC')->first();
@@ -272,6 +275,11 @@ class AccountRepository
         $item->cost = $plan_cost;
         $item->notes = trans("texts.{$plan}_plan_{$term}_description");
 
+        if ($plan == PLAN_ENTERPRISE) {
+            $min = Utils::getMinNumUsers($num_users);
+            $item->notes .= "\n\n###" . trans('texts.min_to_max_users', ['min' => $min, 'max' => $num_users]);
+        }
+
         // Don't change this without updating the regex in PaymentService->createPayment()
         $item->product_key = 'Plan - '.ucfirst($plan).' ('.ucfirst($term).')';
         $invoice->invoice_items()->save($item);
@@ -281,7 +289,7 @@ class AccountRepository
             $pending_monthly_item = InvoiceItem::createNew($invoice);
             $item->qty = 1;
             $pending_monthly_item->cost = 0;
-            $pending_monthly_item->notes = trans("texts.plan_pending_monthly", array('date', Utils::dateToString($term_end)));
+            $pending_monthly_item->notes = trans('texts.plan_pending_monthly', ['date', Utils::dateToString($term_end)]);
 
             // Don't change this without updating the text in PaymentService->createPayment()
             $pending_monthly_item->product_key = 'Pending Monthly';

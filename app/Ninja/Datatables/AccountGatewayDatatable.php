@@ -1,10 +1,6 @@
 <?php namespace App\Ninja\Datatables;
 
-use Utils;
 use URL;
-use Auth;
-
-use App\Models\Gateway;
 use App\Models\AccountGateway;
 
 class AccountGatewayDatatable extends EntityDatatable
@@ -29,18 +25,13 @@ class AccountGatewayDatatable extends EntityDatatable
                         $wepayState = isset($config->state)?$config->state:null;
                         $linkText = $model->name;
                         $url = $endpoint.'account/'.$wepayAccountId;
-                        $wepay = \Utils::setupWepay($accountGateway);
-                        $html = link_to($url, $linkText, array('target'=>'_blank'))->toHtml();
+                        $html = link_to($url, $linkText, ['target'=>'_blank'])->toHtml();
 
                         try {
                             if ($wepayState == 'action_required') {
-                                $updateUri = $wepay->request('/account/get_update_uri', array(
-                                    'account_id' => $wepayAccountId,
-                                    'redirect_uri' => URL::to('gateways'),
-                                ));
-
+                                $updateUri = $endpoint.'api/account_update/'.$wepayAccountId.'?redirect_uri='.urlencode(URL::to('gateways'));
                                 $linkText .= ' <span style="color:#d9534f">('.trans('texts.action_required').')</span>';
-                                $url = $updateUri->uri;
+                                $url = $updateUri;
                                 $html = "<a href=\"{$url}\">{$linkText}</a>";
                                 $model->setupUrl = $url;
                             } elseif ($wepayState == 'pending') {
@@ -52,12 +43,6 @@ class AccountGatewayDatatable extends EntityDatatable
 
                         return $html;
                     }
-                }
-            ],
-            [
-                'payment_type',
-                function ($model) {
-                    return Gateway::getPrettyPaymentType($model->gateway_id);
                 }
             ],
         ];
@@ -95,10 +80,10 @@ class AccountGatewayDatatable extends EntityDatatable
                 function ($model) {
                     $accountGateway = AccountGateway::find($model->id);
                     $endpoint = WEPAY_ENVIRONMENT == WEPAY_STAGE ? 'https://stage.wepay.com/' : 'https://www.wepay.com/';
-                    return array(
+                    return [
                         'url' => $endpoint.'account/'.$accountGateway->getConfig()->accountId,
                         'attributes' => 'target="_blank"'
-                    );
+                    ];
                 },
                 function($model) {
                     return !$model->deleted_at && $model->gateway_id == GATEWAY_WEPAY;

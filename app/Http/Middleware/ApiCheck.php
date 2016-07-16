@@ -7,9 +7,11 @@ use Session;
 use Response;
 use Auth;
 use Cache;
-
 use App\Models\AccountToken;
 
+/**
+ * Class ApiCheck
+ */
 class ApiCheck {
 
     /**
@@ -23,7 +25,10 @@ class ApiCheck {
     {
         $loggingIn = $request->is('api/v1/login') || $request->is('api/v1/register');
         $headers = Utils::getApiHeaders();
-        $hasApiSecret = hash_equals($request->api_secret ?: '', env(API_SECRET));
+
+        if ($secret = env(API_SECRET)) {
+            $hasApiSecret = hash_equals($request->api_secret ?: '', $secret);
+        }
 
         if ($loggingIn) {
             // check API secret

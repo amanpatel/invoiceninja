@@ -11,7 +11,6 @@ class EventServiceProvider extends ServiceProvider {
 	 * @var array
 	 */
 	protected $listen = [
-    
         // Clients
         'App\Events\ClientWasCreated' => [
             'App\Listeners\ActivityListener@createdClient',
@@ -43,6 +42,7 @@ class EventServiceProvider extends ServiceProvider {
         'App\Events\InvoiceWasDeleted' => [
             'App\Listeners\ActivityListener@deletedInvoice',
             'App\Listeners\TaskListener@deletedInvoice',
+            'App\Listeners\ExpenseListener@deletedInvoice',
         ],
         'App\Events\InvoiceWasRestored' => [
             'App\Listeners\ActivityListener@restoredInvoice',
@@ -151,7 +151,14 @@ class EventServiceProvider extends ServiceProvider {
         'App\Events\UserSettingsChanged' => [
             'App\Listeners\HandleUserSettingsChanged',
         ],
-        
+
+        // Task events
+        'App\Events\TaskWasCreated' => [
+            'App\Listeners\ActivityListener@createdTask',
+        ],
+        'App\Events\TaskWasUpdated' => [
+            'App\Listeners\ActivityListener@updatedTask',
+        ],
 	];
 
 	/**

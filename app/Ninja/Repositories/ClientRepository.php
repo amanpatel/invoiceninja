@@ -2,10 +2,8 @@
 
 use DB;
 use Cache;
-use App\Ninja\Repositories\BaseRepository;
 use App\Models\Client;
 use App\Models\Contact;
-use App\Models\Activity;
 use App\Events\ClientWasCreated;
 use App\Events\ClientWasUpdated;
 
@@ -118,9 +116,11 @@ class ClientRepository extends BaseRepository
             $first = false;
         }
 
-        foreach ($client->contacts as $contact) {
-            if (!in_array($contact->public_id, $contactIds)) {
-                $contact->delete();
+        if ( ! $client->wasRecentlyCreated) {
+            foreach ($client->contacts as $contact) {
+                if (!in_array($contact->public_id, $contactIds)) {
+                    $contact->delete();
+                }
             }
         }
 
