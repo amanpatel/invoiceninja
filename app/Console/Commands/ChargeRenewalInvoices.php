@@ -5,6 +5,7 @@ use App\Ninja\Mailers\ContactMailer as Mailer;
 use App\Ninja\Repositories\AccountRepository;
 use App\Services\PaymentService;
 use App\Models\Invoice;
+use App\Models\Account;
 
 /**
  * Class ChargeRenewalInvoices
@@ -55,9 +56,10 @@ class ChargeRenewalInvoices extends Command
     {
         $this->info(date('Y-m-d').' ChargeRenewalInvoices...');
 
-        $account = $this->accountRepo->getNinjaAccount();
-        $invoices = Invoice::whereAccountId($account->id)
+        $ninjaAccount = $this->accountRepo->getNinjaAccount();
+        $invoices = Invoice::whereAccountId($ninjaAccount->id)
                         ->whereDueDate(date('Y-m-d'))
+                        ->where('balance', '>', 0)
                         ->with('client')
                         ->orderBy('id')
                         ->get();
@@ -65,6 +67,19 @@ class ChargeRenewalInvoices extends Command
         $this->info(count($invoices).' invoices found');
 
         foreach ($invoices as $invoice) {
+
+            // check if account has switched to free since the invoice was created
+            $account = Account::find($invoice->client->public_id);
+
+            if ( ! $account) {
+                continue;
+            }
+
+            $company = $account->company;
+            if ( ! $company->plan || $company->plan == PLAN_FREE) {
+                continue;
+            }
+
             $this->info("Charging invoice {$invoice->invoice_number}");
             $this->paymentService->autoBillInvoice($invoice);
         }

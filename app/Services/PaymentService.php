@@ -13,21 +13,6 @@ use App\Ninja\Datatables\PaymentDatatable;
 class PaymentService extends BaseService
 {
     /**
-     * @var DatatableService
-     */
-    protected $datatableService;
-
-    /**
-     * @var PaymentRepository
-     */
-    protected $paymentRepo;
-
-    /**
-     * @var AccountRepository
-     */
-    protected $accountRepo;
-
-    /**
      * PaymentService constructor.
      *
      * @param PaymentRepository $paymentRepo
@@ -72,7 +57,27 @@ class PaymentService extends BaseService
             return false;
         }
 
+        if ($credits = $client->credits->sum('balance')) {
+            $balance = $invoice->balance;
+            $amount = min($credits, $balance);
+            $data = [
+                'payment_type_id' => PAYMENT_TYPE_CREDIT,
+                'invoice_id' => $invoice->id,
+                'client_id' => $client->id,
+                'amount' => $amount,
+            ];
+            $payment = $this->paymentRepo->save($data);
+            if ($amount == $balance) {
+                return $payment;
+            }
+        }
+
         $paymentDriver = $account->paymentDriver($invitation, GATEWAY_TYPE_TOKEN);
+
+        if ( ! $paymentDriver) {
+            return false;
+        }
+
         $customer = $paymentDriver->customer();
 
         if ( ! $customer) {
@@ -157,5 +162,4 @@ class PaymentService extends BaseService
             return parent::bulk($ids, $action);
         }
     }
-
 }

@@ -4,10 +4,13 @@
 
 # Invoice Ninja
 
-[![Build Status](https://travis-ci.org/invoiceninja/invoiceninja.svg?branch=master)](https://travis-ci.org/invoiceninja/invoiceninja)
+[![Build Status](https://travis-ci.org/invoiceninja/invoiceninja.svg?branch=develop)](https://travis-ci.org/invoiceninja/invoiceninja)
+[![Docs](https://readthedocs.org/projects/pip/badge/?version=latest)](http://docs.invoiceninja.com/en/latest/)
 [![Join the chat at https://gitter.im/hillelcoren/invoice-ninja](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/hillelcoren/invoice-ninja?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 ## [Hosted](https://www.invoiceninja.com) | [Self-hosted](https://invoiceninja.org)
+
+[![Invoice Ninja - Overview](https://app.invoiceninja.com/youtube.png)](https://www.youtube.com/watch?v=xHGKvadapbA)
 
 We're often asked to recommend Laravel/PHP developers to help setup our app and make small adjustments, email us at contact@invoiceninja.com if you're interested in taking on the work.
 
@@ -18,7 +21,6 @@ We're often asked to recommend Laravel/PHP developers to help setup our app and 
 ### Installation Options
 * [Self-Host Zip](https://www.invoiceninja.com/knowledgebase/self-host/) - Free
 * [Docker File](https://github.com/invoiceninja/dockerfiles) - Free
-* [Bitnami](https://bitnami.com/stack/invoice-ninja) - Free
 * [Softaculous](https://www.softaculous.com/apps/ecommerce/Invoice_Ninja) - $30
 
 ## Requirements
@@ -50,7 +52,7 @@ We're often asked to recommend Laravel/PHP developers to help setup our app and 
 ## Documentation
 * [Ubuntu and Apache](http://blog.technerdservices.com/index.php/2015/04/techpop-how-to-install-invoice-ninja-on-ubuntu-14-04/)
 * [Debian and Nginx](https://www.rosehosting.com/blog/install-invoice-ninja-on-a-debian-7-vps/)
-* [User Guide](https://www.invoiceninja.com/app-user-guide/)
+* [User Guide](http://docs.invoiceninja.com/en/latest/)
 * [Developer Guide](https://www.invoiceninja.com/knowledgebase/developer-guide/)
 * [API Documentation](https://www.invoiceninja.com/api-documentation/)
 * [Support Forum](https://www.invoiceninja.com/forums/forum/support/)
@@ -69,8 +71,8 @@ For information on how contribute to Invoice Ninja, please see our [contributing
 * [Jeramy Simpson](https://github.com/JeramyMywork) - [MyWork](https://www.mywork.com.au)
 * [Sigitas Limontas](https://lt.linkedin.com/in/sigitaslimontas)
 * [Joshua Dwire](https://github.com/joshuadwire) - [Some Techie](https://www.sometechie.com)
-* [Holger Lösken](https://github.com/codedge) - [codedge](http://codedge.de/)
-
+* [Holger Lösken](https://github.com/codedge) - [codedge](http://codedge.de)
+* [Samuel Laulhau](https://github.com/lalop) - [Lalop](http://lalop.co/)
 
 ## License
 Invoice Ninja is released under the Attribution Assurance License.  

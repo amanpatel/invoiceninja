@@ -27,7 +27,8 @@ class DateFormatsSeeder extends Seeder
         ];
 
         foreach ($formats as $format) {
-            $record = DateFormat::whereFormat($format['format'])->first();
+            // use binary to support case-sensitive search
+            $record = DateFormat::whereRaw("BINARY `format`= ?", array($format['format']))->first();
             if ($record) {
                 $record->picker_format = $format['picker_format'];
                 $record->save();
@@ -54,7 +55,7 @@ class DateFormatsSeeder extends Seeder
         ];
 
         foreach ($formats as $format) {
-            $record = DatetimeFormat::whereFormat($format['format'])->first();
+            $record = DatetimeFormat::whereRaw("BINARY `format`= ?", array($format['format']))->first();
             if ($record) {
                 $record->format_moment = $format['format_moment'];
                 $record->save();
